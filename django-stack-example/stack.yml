@@ -1,0 +1,30 @@
+version: '3.7'
+
+services:
+
+  worker:
+    image: myapp
+
+    # The entry-point
+    command: bash /app/start.sh
+
+    stop_signal: SIGINT
+
+    volumes:
+      - ${PWD}/src:/app
+
+    ports:
+      # host:service
+      - 8080:8000
+
+  # psql -h 127.0.0.1 -p 54321 -U postgres
+  database:
+    image: postgres:10
+    environment:
+      PGDATA: /data
+      POSTGRES_PASSWORD: 123
+    volumes:
+      - ${PWD}/data:/data
+    ports:
+      - 54321:5432
+
