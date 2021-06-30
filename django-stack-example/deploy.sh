@@ -4,6 +4,7 @@ APP_IMG_NAME=myapp
 DOCKERFILE_DIR=$PWD/images
 STACK_NAME=dj
 COMPOSE_FILE=stack.yml
+DATABASE_DIR=$PWD/data
 
 function echo_fancy() {
   echo
@@ -46,6 +47,12 @@ function deploy() {
 
 build
 remove_stack
+
+if [ ! -d $DATABASE_DIR ]; then
+  echo_fancy "[*] Creating database directory..."
+  mkdir $DATABASE_DIR
+fi
+
 deploy
 
 exit 0
