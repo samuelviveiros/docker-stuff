@@ -11,7 +11,7 @@ Posteriormente adicionaremos outro serviço que fará o papel de servidor de ban
 
 Para fins didáticos, vamos supor que o nosso usuário Linux se chame dev, de maneira que o diretório home seria: /home/dev
 
-Crie o diretório do projeto. Para o nosso exemplo será:
+Vamos lá então. Crie o diretório do projeto, que em nosso exemplo será:
 
 /home/dev/myproject
 
@@ -30,18 +30,28 @@ Instale a última versão LTS oficial do Django:
 
 Inicie um novo projeto Django:
 
-$ django-admin startproject app src
+(.venv)$ django-admin startproject app src
+
+Perceba que todo o código-fonte da aplicação Django estará localizado no diretório src.
 
 Salve as dependências em um arquivo:
 
 (.venv)$ pip freeze > src/requirements.txt
 
-Faça a migração de dados:
+Apenas para conhecimento, os pacotes listados nesse arquivo podem ser facilmente instalado da seguinte forma:
+
+$ pip install -r requirements.txt
+
+Mas no nosso exemplo, esse trabalho será automatizado por um script bash.
+
+Dando continuidade, faça a migração de dados:
 
 (.venv)$ cd /home/dev/myproject/src
 (.venv)$ python manage.py migrate
 
-Nesse ponto, a estrutura do nosso deverá estar assim:
+Como o banco de dados ainda é o padrão Django, será criado um arquivo db.sqlite3.
+
+Nesse ponto, a estrutura do nosso projeto deverá estar assim:
 
 /home/dev/myproject
            -> .venv
@@ -52,6 +62,7 @@ Nesse ponto, a estrutura do nosso deverá estar assim:
                    -> settings.py
                    -> urls.py
                    -> wsgi.py
+               -> db.sqlite3
                -> manage.py
                -> requirements.txt
 
@@ -60,22 +71,22 @@ Caso deseje, execute o servidor web de desenvolvimento do Django para testar a a
 (.venv)$ cd /home/dev/myproject/src
 (.venv)$ python manage.py runserver 0.0.0.0:8080
 
-Saia do ambiente virtual e exclua o diretório .venv. Posteriormente, ele será criado pelo nosso serviço:
+Saia do ambiente virtual e exclua o diretório .venv (posteriormente, a criação dele será automatizada por um script):
 
 (.venv)$ deactivate
 $ rm -rf /home/dev/myproject/.venv
 
 Com a estrutura inicial do nosso projeto pronta, podemos agora focar na criação do serviço docker.
 
-Primeiramente, precisamos de uma imagem docker que tenha as ferramentas necessárias para rodar a nossa aplicação.
+Primeiramente, precisaremos "buildar" uma imagem docker que tenha as ferramentas necessárias para rodar a nossa aplicação.
 
 Apesar de existirem diversas imagens disponívels no site do docker geridas pela comunidade, iremos cria a nossa própria imagem customizada.
 
-Entre no diretório do projeto:
+Entre no diretório do projeto,
 
 $ cd /home/dev/myproject
 
-Crie um arquivo Dockerfile com o seguinte conteúdo:
+E crie um arquivo Dockerfile com o seguinte conteúdo:
 
 
 FROM ubuntu:20.04
@@ -91,11 +102,11 @@ WORKDIR /app
 
 A nossa imagem será basicamente um Ubuntu com Python 3 e módulo de virtualenv instalado.
 
-Crie a imagem. Aqui a chamaremos de myapp:
+Crie a imagem, que em nosso exemplo chamaremos de myapp:
 
 $ docker build -t myapp .
 
-Com a imagem pronto, agora falta definirmos um arquivo compose que descreverá a nossa stack.
+Com a imagem pronta, agora falta definirmos um arquivo compose que descreverá a nossa stack.
 
 Crie um arquivo chamado stack.yml com o seguinte conteúdo:
 
@@ -186,6 +197,34 @@ Até o momento, a estrutura do nosso projeto está assim:
                -> manage.py
                -> requirements.txt
 
+Antes de prosseguirmos com o deploy da stack, pode ser interessante subir um container diretamente apenas para testar o script start.sh:
+
+$ cd /home/dev/myproject
+$ docker run -it --rm -p 8080:8000 -v $(pwd)/src:/app myapp bash /app/start.sh
+
+Se tudo correu bem, a aplicação estará acessível no host através do endereço http://127.0.0.1:8080
+
+Perceba que tudo o que fizemos até o momento foi "buildar" uma imagem capaz de rodar a nossa aplicação, porém com o código-fonte "do lado de fora", ou seja, acessível no container através de um volume.
+
+Essa organização é muito conveniente para um ambiente de desenvolvimento. Mas quando o código for para produção, tudo deverá ir "empacotado" na imagem, sem ficar nada "do lado de fora".
+
+Agora chegou o momento de fazer o deploy no Docker Swarm:
+
+$ cd /home/dev/myproject
+$ docker stack deploy dj -c stack.yml
+
+É isso. O nome da nossa stack é "dj", e todos os serviços dessa stack serão prefixados com "dj_".
+
+Para monitorar esse processo de subir a stack, eu gosto de manter o comando watch rodando em um terminal separado:
+
+$ watch -n 1 "docker service ls"
+
+Assim eu tenho condições de saber se todos os serviços subiram, e se algum apresentou problemas.
+
+Outro comando muito útil é a exibição de logs de um serviço, e até o momento temos apenas um serviço. Vamos ver o que está acontecendo nele:
+
+$ docker service logs -f dj_worker
+
 
 
 
@@ -194,35 +233,13 @@ docker exec -it $(docker container ls -f name=dj_worker -q) bash -c "source /app
 
 docker service update dj_worker --force
 
-docker stack deploy dj -c stack.yml
-
-docker build -t myapp .
-
 docker stack rm dj
-
-docker run -it --rm -v $(pwd)/src:/app myapp bash
-
-pip install -r requirements.txt
-
-python3 -m venv .venv
-
-pip freeze > requirements.txt
 
 docker run -it --rm alpine ping 8.8.8.8
 
 python manage.py createsuperuser
 
-django-admin startproject app src
-
-pip install django==3.2.4
-
-source .venv/bin/activate
-
-docker service logs -f dj_worker
-
 docker run -it --rm alpine sh -c "echo Hello There!"
-
-watch -n 1 "docker container ls"
 
 
 
@@ -252,7 +269,7 @@ services:
 
 No diretório do projeto, crie o diretório data.
 
-Note que a porta que estamos utilizando do lado do host é 54321.
+Note que a porta que estamos utilizando do lado do host é 54321. Pode ser qualquer porta alta, desde que não esteja em uso por outro processo.
 
 Adicione a seguinte linha ao final do arquivo requirements.txt:
 
@@ -288,7 +305,7 @@ Crie o banco de dados:
 
 postgres=# CREATE DATABASE myapp_db;
 
-Reinicie o worker caso a página di Django esteja inacessível:
+Reinicie o worker caso a página do Django esteja inacessível:
 
 docker service update dj_worker --force
 
