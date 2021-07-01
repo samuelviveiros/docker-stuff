@@ -228,6 +228,7 @@ $ docker service logs -f dj_worker
 
 
 
+docker exec -it $(docker container ls -f name=dj_worker -q) /bin/bash --rcfile /etc/profile --init-file /app/.venv/bin/activate
 
 docker exec -it $(docker container ls -f name=dj_worker -q) bash -c "source /app/.venv/bin/activate; exec /usr/bin/env bash --rcfile <(echo 'PS1=\"(venv)\${PS1}\"') -i"
 
