@@ -18,7 +18,7 @@ echo
 echo "[*] Installing dependencies..."
 echo
 
-pip install -r /app/requirements.txt
+pip install -U -r /app/requirements.txt
 
 echo
 echo "[*] Migrating database..."
