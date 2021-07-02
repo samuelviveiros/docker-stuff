@@ -40,11 +40,25 @@ Salve as dependências em um arquivo:
 
 Apenas para conhecimento, os pacotes listados nesse arquivo podem ser facilmente instalado da seguinte forma:
 
-$ pip install -r requirements.txt
+$ pip install -U -r requirements.txt
 
-Mas no nosso exemplo, esse trabalho será automatizado por um script bash.
+Mas no nosso projeto de exemplo, esse trabalho será automatizado por um script bash.
 
-Dando continuidade, faça a migração de dados:
+Também é interessante incluir no requirements.txt o pacote do IPython.
+
+Trata-se de um shell interativo de Python muito mais versátil de utilizar.
+
+Com exceção do pacote Django, substitua os operadores == por >=
+
+O conteúdo deverá ficar assim:
+
+asgiref>=3.4.0
+Django==3.2.4
+pytz>=2021.1
+sqlparse>=0.4.1
+ipython>=7.25.0
+
+Faça a migração de dados:
 
 (.venv)$ cd /home/dev/myproject/src
 (.venv)$ python manage.py migrate
@@ -53,28 +67,33 @@ Como o banco de dados ainda é o padrão Django, será criado um arquivo db.sqli
 
 Nesse ponto, a estrutura do nosso projeto deverá estar assim:
 
-/home/dev/myproject
-           -> .venv
-           -> src
-               -> app
-                   -> asgi.py
-                   -> __init__.py
-                   -> settings.py
-                   -> urls.py
-                   -> wsgi.py
-               -> db.sqlite3
-               -> manage.py
-               -> requirements.txt
+ /
+ └─ home
+     └─ dev
+         └─ myproject
+             ├─ .venv
+             └─ src
+                 ├─ app
+                 │   ├─ asgi.py
+                 │   ├─ __init__.py
+                 │   ├─ settings.py
+                 │   ├─ urls.py
+                 │   └─ wsgi.py
+                 ├─ db.sqlite3
+                 ├─ manage.py
+                 └─ requirements.txt
 
 Caso deseje, execute o servidor web de desenvolvimento do Django para testar a aplicação:
 
 (.venv)$ cd /home/dev/myproject/src
 (.venv)$ python manage.py runserver 0.0.0.0:8080
 
-Saia do ambiente virtual e exclua o diretório .venv (posteriormente, a criação dele será automatizada por um script):
+Saia do ambiente virtual e exclua o diretório .venv:
 
 (.venv)$ deactivate
 $ rm -rf /home/dev/myproject/.venv
+
+Posteriormente, automatizaremos a criação do ambiente virtual, mas dessa vez dentro do diretório src via script bash.
 
 Com a estrutura inicial do nosso projeto pronta, podemos agora focar na criação do serviço docker.
 
@@ -82,11 +101,12 @@ Primeiramente, precisaremos "buildar" uma imagem docker que tenha as ferramentas
 
 Apesar de existirem diversas imagens disponívels no site do docker geridas pela comunidade, iremos cria a nossa própria imagem customizada.
 
-Entre no diretório do projeto,
+Entre no diretório do projeto e crie um diretório chamado images:
 
 $ cd /home/dev/myproject
+$ mkdir images
 
-E crie um arquivo Dockerfile com o seguinte conteúdo:
+Dentro do diretório images, crie um arquivo Dockerfile com o seguinte conteúdo:
 
 
 FROM ubuntu:20.04
@@ -104,11 +124,12 @@ A nossa imagem será basicamente um Ubuntu com Python 3 e módulo de virtualenv 
 
 Crie a imagem, que em nosso exemplo chamaremos de myapp:
 
-$ docker build -t myapp .
+$ cd /home/dev/myproject
+$ docker build -t myapp ./images
 
 Com a imagem pronta, agora falta definirmos um arquivo compose que descreverá a nossa stack.
 
-Crie um arquivo chamado stack.yml com o seguinte conteúdo:
+No diretório do projeto, crie um arquivo chamado stack.yml com o seguinte conteúdo:
 
 
 # stack.yml
@@ -143,34 +164,61 @@ Por fim, na linha command, estamos definindo o ponto de entrada da nossa aplica�
 Crie o script start.sh no diretório src com o seguinte conteúdo:
 
 
-# start.sh
 #!/usr/bin/env bash
+# start.sh
+
+CHECKSUM_ENABLED="off"
 
 echo
-echo "[*] Starting Django application..."
+echo "[*] Starting worker service..."
 echo
+
 
 echo
 echo "[*] Preparing virtual environment..."
 echo
 
-rm -rf /app/.venv
+cd /app
 
-python3.8 -m venv /app/.venv
+#rm -rf .venv
 
-source /app/.venv/bin/activate
+if [ ! -d .venv ]; then
+  python3.8 -m venv .venv
+fi
 
-echo
-echo "[*] Installing dependencies..."
-echo
+source .venv/bin/activate
 
-pip install -r /app/requirements.txt
+
+if [ $CHECKSUM_ENABLED == "on" ]; then
+  echo
+  echo "[*] Checking requirements.txt MD5 hash..."
+  echo
+
+  OLD_MD5=$(cat requirements.md5 2>/dev/null || echo "fallback-hash")
+  NEW_MD5=$(md5sum requirements.txt | awk '{ print $1 }')
+
+  if [ $OLD_MD5 != $NEW_MD5 ]; then
+    echo
+    echo "[*] Installing dependencies..."
+    echo
+
+    echo $NEW_MD5 > requirements.md5
+    pip install -U -r requirements.txt
+  fi
+else
+  echo
+  echo "[*] Installing dependencies..."
+  echo
+  pip install -U -r requirements.txt
+fi
+
 
 echo
 echo "[*] Migrating database..."
 echo
 
 python manage.py migrate
+
 
 echo
 echo "[*] Starting development web server..."
@@ -181,21 +229,25 @@ python manage.py runserver 0.0.0.0:8000
 
 Até o momento, a estrutura do nosso projeto está assim:
 
-/home/dev/myproject
-           -> Dockerfile
-           -> stack.yml
-           -> .venv
-           -> src
-               -> app
-                   -> asgi.py
-                   -> __init__.py
-                   -> settings.py
-                   -> urls.py
-                   -> wsgi.py
-                   -> start.sh
-               -> db.sqlite3
-               -> manage.py
-               -> requirements.txt
+ /
+ └─ home
+     └─ dev
+         └─ myproject
+             ├─ stack.yml
+             ├─ images
+             │   └─ Dockerfile
+             └─ src
+                 ├─ app
+                 │   ├─ asgi.py
+                 │   ├─ __init__.py
+                 │   ├─ settings.py
+                 │   ├─ urls.py
+                 │   └─ wsgi.py
+                 ├─ db.sqlite3
+                 ├─ manage.py
+                 ├─ requirements.txt
+                 ├─ start.sh
+                 └─ .venv
 
 Antes de prosseguirmos com o deploy da stack, pode ser interessante subir um container diretamente apenas para testar o script start.sh:
 
@@ -225,29 +277,121 @@ Outro comando muito útil é a exibição de logs de um serviço, e até o momen
 
 $ docker service logs -f dj_worker
 
+Abra o browser de sua preferência no host e tente acessar a página do Django:
+
+http://127.0.0.1:8080
+
+Utilize o comando a seguir para entrar no shell do serviço dj_worker já com o ambiente virtual ativado:
+
+$ docker exec -it $(docker container ls -f name=dj_worker -q) /bin/bash --rcfile /etc/profile --init-file /app/.venv/bin/activate
+
+Se precisar reiniciar o serviço:
+
+$ docker service update dj_worker --force
+
+Se precisar remover a stack:
+
+$ docker stack rm dj
+
+Para fechar essa parte do tutorial com chave de ouro, defina um script, dentro do diretório do projeto, para automatizar o deploy:
 
 
+#!/usr/bin/env bash
+# deploy.sh
 
-docker exec -it $(docker container ls -f name=dj_worker -q) /bin/bash --rcfile /etc/profile --init-file /app/.venv/bin/activate
+APP_IMG_NAME=myapp
+DOCKERFILE_DIR=$PWD/images
+STACK_NAME=dj
+COMPOSE_FILE=stack.yml
+DATABASE_DIR=$PWD/data
 
-docker exec -it $(docker container ls -f name=dj_worker -q) bash -c "source /app/.venv/bin/activate; exec /usr/bin/env bash --rcfile <(echo 'PS1=\"(venv)\${PS1}\"') -i"
+function echo_fancy() {
+  echo
+  echo $1
+  echo
+}
 
-docker service update dj_worker --force
+function build() {
+  echo_fancy "[*] Building app image..."
+  docker build -t $APP_IMG_NAME $DOCKERFILE_DIR
+  if [ ! $? == 0 ]; then
+    echo_fancy "[-] Could not build the app image."
+    exit 1
+  fi
+}
 
-docker stack rm dj
+function remove_stack() {
+  echo_fancy "[*] Removing the old stack..."
+  docker stack rm $STACK_NAME
+  while true; do
+    echo_fancy "[*] Waiting for services to be totally purged..."
+    docker service ls -f name=$STACK_NAME | grep -i ${STACK_NAME}_ >/dev/null
+    SERVICES_STILL_RUNNING=$?
 
-docker run -it --rm alpine ping 8.8.8.8
+    docker network ls -f name=${STACK_NAME}_default | grep -i ${STACK_NAME}_default >/dev/null
+    NETWORK_STILL_EXISTS=$?
 
-python manage.py createsuperuser
+    if [ ! $SERVICES_STILL_RUNNING == 0 ] && [ ! $NETWORK_STILL_EXISTS == 0 ]; then
+      break
+    fi
 
-docker run -it --rm alpine sh -c "echo Hello There!"
+    sleep 3
+  done
+}
+
+function deploy() {
+  echo_fancy "[*] Deploying now..."
+  docker stack deploy $STACK_NAME -c $COMPOSE_FILE
+}
+
+build
+remove_stack
+
+if [ ! -d $DATABASE_DIR ]; then
+  echo_fancy "[*] Creating database directory..."
+  mkdir $DATABASE_DIR
+fi
+
+deploy
+
+exit 0
+
+
+Por fim, para fazer o deploy basta executar o script:
+
+$ bash deploy.sh
+
+Até o momento, a estrutura do nosso projeto está assim:
+
+ /
+ └─ home
+     └─ dev
+         └─ myproject
+             ├─ deploy.sh
+             ├─ stack.yml
+             ├─ images
+             │   └─ Dockerfile
+             └─ src
+                 ├─ app
+                 │   ├─ asgi.py
+                 │   ├─ __init__.py
+                 │   ├─ settings.py
+                 │   ├─ urls.py
+                 │   └─ wsgi.py
+                 ├─ db.sqlite3
+                 ├─ manage.py
+                 ├─ requirements.txt
+                 ├─ start.sh
+                 └─ .venv
+
+Boa sorte :)
 
 
 
 CRIANDO UM SERVIÇO DE BANCO DE DADOS E CONECTANDO A APLICAÇÃO DJANGO
 --------------------------------------------------------------------
 
-Inclua a seguinte definição de serviço no arquivo compose:
+Abra o arquivo compose stack.yml e defina um serviço que vamos chamar de database:
 
 
 # stack.yml
@@ -255,7 +399,16 @@ version: '3.7'
 
 services:
 
-  ...
+  worker:
+    image: myapp
+    # Ponto de entrada:
+    command: bash /app/start.sh
+    stop_signal: SIGINT
+    volumes:
+      - ${PWD}/src:/app
+    ports:
+      # host:serviço
+      - 8080:8000
 
   database:
     image: postgres:10
@@ -270,11 +423,35 @@ services:
 
 No diretório do projeto, crie o diretório data.
 
+Até o momento, a estrutura do nosso projeto está assim:
+
+ /
+ └─ home
+     └─ dev
+         └─ myproject
+             ├─ data
+             ├─ deploy.sh
+             ├─ stack.yml
+             ├─ images
+             │   └─ Dockerfile
+             └─ src
+                 ├─ app
+                 │   ├─ asgi.py
+                 │   ├─ __init__.py
+                 │   ├─ settings.py
+                 │   ├─ urls.py
+                 │   └─ wsgi.py
+                 ├─ db.sqlite3
+                 ├─ manage.py
+                 ├─ requirements.txt
+                 ├─ start.sh
+                 └─ .venv
+
 Note que a porta que estamos utilizando do lado do host é 54321. Pode ser qualquer porta alta, desde que não esteja em uso por outro processo.
 
 Adicione a seguinte linha ao final do arquivo requirements.txt:
 
-psycopg2-binary>=2.8.4
+psycopg2-binary>=2.9.1
 
 Altere o dicionário DATABASES localizado no arquivo settings.py do Django para que fique da seguinte forma:
 
@@ -292,15 +469,15 @@ DATABASES = {
 
 Suba a stack:
 
-docker stack deploy dj -c stack.yml
+$ docker stack deploy dj -c stack.yml
 
 Instale o cliente PostgreSQL no host:
 
-sudo apt install postgresql-client -y
+$ sudo apt install postgresql-client -y
 
 A partir do host, conecte-se ao serviço de banco de dados:
 
-psql -h 127.0.0.1 -p 54321 -U postgres
+$ psql -h 127.0.0.1 -p 54321 -U postgres
 
 Crie o banco de dados:
 
@@ -308,5 +485,27 @@ postgres=# CREATE DATABASE myapp_db;
 
 Reinicie o worker caso a página do Django esteja inacessível:
 
-docker service update dj_worker --force
+$ docker service update dj_worker --force
+
+Abra o browser de sua preferência no host e tente acessar a página do Django:
+
+http://127.0.0.1:8080
+
+Agora que configuramos o Django com o PostgreSQL, não precisamos mais do arquivo SQLite3 gerado pelo Django:
+
+$ cd /home/dev/myproject
+$ rm -f src/db.sqlite3
+
+
+
+
+=====================================================
+
+
+docker run -it --rm alpine ping 8.8.8.8
+
+python manage.py createsuperuser
+
+docker run -it --rm alpine sh -c "echo Hello There!"
+
 

@@ -11,34 +11,38 @@ echo
 echo "[*] Preparing virtual environment..."
 echo
 
-#rm -rf /app/.venv
+cd /app
 
-if [ ! -d /app/.venv ]; then
-  python3.8 -m venv /app/.venv
+#rm -rf .venv
+
+if [ ! -d .venv ]; then
+  python3.8 -m venv .venv
 fi
 
-source /app/.venv/bin/activate
+source .venv/bin/activate
 
 
 if [ $CHECKSUM_ENABLED == "on" ]; then
   echo
   echo "[*] Checking requirements.txt MD5 hash..."
   echo
-  OLD_MD5=$(cat /app/requirements.md5 2>/dev/null || echo "fallback-hash")
-  NEW_MD5=$(md5sum /app/requirements.txt | awk '{ print $1 }')
+
+  OLD_MD5=$(cat requirements.md5 2>/dev/null || echo "fallback-hash")
+  NEW_MD5=$(md5sum requirements.txt | awk '{ print $1 }')
+
   if [ $OLD_MD5 != $NEW_MD5 ]; then
     echo
     echo "[*] Installing dependencies..."
     echo
 
-    echo $NEW_MD5 > /app/requirements.md5
-    pip install -U -r /app/requirements.txt
+    echo $NEW_MD5 > requirements.md5
+    pip install -U -r requirements.txt
   fi
 else
   echo
   echo "[*] Installing dependencies..."
   echo
-  pip install -U -r /app/requirements.txt
+  pip install -U -r requirements.txt
 fi
 
 

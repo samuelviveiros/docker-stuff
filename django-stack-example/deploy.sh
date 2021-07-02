@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# deploy.sh
 
 APP_IMG_NAME=myapp
 DOCKERFILE_DIR=$PWD/images
